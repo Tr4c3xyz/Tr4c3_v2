@@ -1,0 +1,1163 @@
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TR4C3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&display=swap" rel="stylesheet">
+    <style>
+      body, html, #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #000;
+        font-family: 'Gochi Hand', cursive;
+        color: #fff;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #demo-canvas {
+        display: none;
+      }
+
+      #gl-canvas {
+        z-index: 1;
+      }
+
+      #ui-canvas {
+        z-index: 2;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root">
+        <canvas id="demo-canvas"></canvas>
+        <canvas id="gl-canvas"></canvas>
+        <canvas id="ui-canvas"></canvas>
+    </div>
+    <script type="module">
+
+      const PROXY_URL = 'https://api.codetabs.com/v1/proxy?quest=';
+      const ORIGINAL_MUSIC_URL = 'https://lemon.ams3.cdn.digitaloceanspaces.com/c64/music/hvsc/mp3/MUSICIANS/C/Cadaver/Steel_Ranger-10.mp3';
+      const MUSIC_URL = `${PROXY_URL}${ORIGINAL_MUSIC_URL}`;
+      const FFT_SIZE = 256;
+      const TWO_PI = Math.PI * 2;
+
+
+      function scribbleLine(ctx, x1, y1, x2, y2, roughness, strokeStyle, lineWidth = 1) {
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          const len = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+          const segments = Math.max(1, len / 10);
+          for (let i = 1; i <= segments; i++) {
+              const t = i / segments;
+              const px = x1 + (x2 - x1) * t;
+              const py = y1 + (y2 - y1) * t;
+              ctx.lineTo(px + (Math.random() - 0.5) * roughness, py + (Math.random() - 0.5) * roughness);
+          }
+          ctx.strokeStyle = strokeStyle;
+          ctx.lineWidth = lineWidth;
+          ctx.stroke();
+      }
+      function scribbleFillRect(ctx, x, y, w, h, roughness, fillStyle, lineWidth = 0.5) {
+          const density = 0.3;
+          const numLines = (w + h) * density;
+          for (let i = 0; i < numLines; i++) {
+              const x1 = x + Math.random() * w;
+              const y1 = y + Math.random() * h;
+              const angle = Math.random() * TWO_PI;
+              const length = 5 + Math.random() * 15;
+              const x2 = x1 + Math.cos(angle) * length;
+              const y2 = y1 + Math.sin(angle) * length;
+              scribbleLine(ctx, x1, y1, x2, y2, roughness, fillStyle, lineWidth);
+          }
+      }
+      function scribbleRect(ctx, x, y, w, h, roughness, strokeStyle, lineWidth = 1, fillStyle) {
+          if (fillStyle) {
+              scribbleFillRect(ctx, x, y, w, h, roughness / 2, fillStyle);
+          }
+          scribbleLine(ctx, x, y, x + w, y, roughness, strokeStyle, lineWidth);
+          scribbleLine(ctx, x + w, y, x + w, y + h, roughness, strokeStyle, lineWidth);
+          scribbleLine(ctx, x + w, y + h, x, y + h, roughness, strokeStyle, lineWidth);
+          scribbleLine(ctx, x, y + h, x, y, roughness, strokeStyle, lineWidth);
+      }
+      function scribbleCircle(ctx, x, y, radius, roughness, style, lineWidth = 1) {
+          ctx.beginPath();
+          const points = 30;
+          const angleStep = TWO_PI / points;
+          for (let i = 0; i <= points; i++) {
+              const angle = i * angleStep;
+              const r = radius + (Math.random() - 0.5) * roughness;
+              const px = x + Math.cos(angle) * r;
+              const py = y + Math.sin(angle) * r;
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = style;
+          ctx.lineWidth = lineWidth;
+          ctx.stroke();
+      }
+      function scribbleBlob(ctx, x, y, radius, roughness, style, lineWidth = 1, time = 0) {
+          ctx.beginPath();
+          const points = 20;
+          const angleStep = TWO_PI / points;
+          let firstPx = 0, firstPy = 0;
+          for (let i = 0; i <= points; i++) {
+              const angle = i * angleStep;
+              const baseOffset = Math.sin(angle * 4 + time * 2) * roughness * 0.6;
+              const randomOffset = (Math.random() - 0.5) * roughness * 0.4;
+              const r = radius + baseOffset + randomOffset;
+              const px = x + Math.cos(angle) * r;
+              const py = y + Math.sin(angle) * r;
+              if (i === 0) {
+                  ctx.moveTo(px, py);
+                  firstPx = px;
+                  firstPy = py;
+              } else {
+                  ctx.lineTo(px, py);
+              }
+          }
+          ctx.lineTo(firstPx, firstPy);
+          ctx.strokeStyle = style;
+          ctx.lineWidth = lineWidth;
+          ctx.stroke();
+      }
+      function scribbleText(ctx, text, x, y, fontSize, roughness, style, align = 'center') {
+          ctx.font = `${fontSize}px "Gochi Hand", monospace`;
+          ctx.textAlign = align;
+          ctx.textBaseline = 'middle';
+          for (let i = 0; i < 3; i++) {
+              const offsetX = (Math.random() - 0.5) * roughness;
+              const offsetY = (Math.random() - 0.5) * roughness;
+              ctx.fillStyle = style;
+              ctx.globalAlpha = 0.5 + Math.random() * 0.3;
+              ctx.fillText(text, x + offsetX, y + offsetY);
+          }
+          ctx.globalAlpha = 1.0;
+      }
+      function scribbleStar(ctx, x, y, size, points, style) {
+          ctx.beginPath();
+          ctx.moveTo(x, y - size);
+          for (let i = 0; i < points * 2; i++) {
+              const angle = i * Math.PI / points;
+              const radius = i % 2 === 0 ? size : size * 0.4;
+              ctx.lineTo(x + radius * Math.sin(angle), y - radius * Math.cos(angle));
+          }
+          ctx.closePath();
+          ctx.strokeStyle = style;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+      }
+      function scribbleMusicNote(ctx, x, y, size, style, roughness = 1, lineWidth = 2) {
+          const stemHeight = size * 1.5;
+          const headRadius = size * 0.4;
+          scribbleLine(ctx, x, y, x, y - stemHeight, roughness, style, lineWidth);
+          ctx.beginPath();
+          ctx.ellipse(x - headRadius * 0.2, y, headRadius, headRadius * 0.7, Math.PI / 4, 0, TWO_PI);
+          const tempX = x - headRadius * 0.2, tempY = y;
+          for(let i = 0; i < 5; i++) {
+              const angle = Math.random() * TWO_PI;
+              const r1 = Math.random() * headRadius;
+              const r2 = Math.random() * headRadius;
+              const x1 = tempX + Math.cos(angle) * r1;
+              const y1 = tempY + Math.sin(angle) * r1 * 0.7;
+              const x2 = tempX + Math.cos(angle + Math.PI) * r2;
+              const y2 = tempY + Math.sin(angle + Math.PI) * r2 * 0.7;
+              scribbleLine(ctx, x1, y1, x2, y2, roughness/2, style, 1);
+          }
+          scribbleLine(ctx, x, y - stemHeight, x + size * 0.8, y - stemHeight + size * 0.5, roughness * 1.5, style, lineWidth);
+      }
+
+
+      function parseColor(str) {
+          if (str.startsWith('#')) {
+              let hex = str.slice(1);
+              if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+              const bigint = parseInt(hex, 16);
+              return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255, a: 1 };
+          } else if (str.startsWith('rgb')) {
+              const parts = str.match(/[\d.]+/g);
+              if (parts && parts.length >= 3) {
+                  return { r: parseInt(parts[0], 10), g: parseInt(parts[1], 10), b: parseInt(parts[2], 10), a: parts.length > 3 ? parseFloat(parts[3]) : 1 };
+              }
+          }
+          return { r: 0, g: 0, b: 0, a: 1 };
+      }
+      function rgbaToString(c) {
+          return `rgba(${c.r | 0}, ${c.g | 0}, ${c.b | 0}, ${c.a})`;
+      }
+      function lerp(a, b, t) {
+          return a + (b - a) * t;
+      }
+      function lerpColor(c1, c2, t, out) {
+          const clampedT = Math.max(0, Math.min(1, t));
+          out.r = lerp(c1.r, c2.r, clampedT);
+          out.g = lerp(c1.g, c2.g, clampedT);
+          out.b = lerp(c1.b, c2.b, clampedT);
+          out.a = lerp(c1.a, c2.a, clampedT);
+          return out;
+      }
+      function lerpPalette(p1, p2, t, out) {
+          lerpColor(p1.bg, p2.bg, t, out.bg);
+          lerpColor(p1.primary, p2.primary, t, out.primary);
+          lerpColor(p1.accent1, p2.accent1, t, out.accent1);
+          lerpColor(p1.accent2, p2.accent2, t, out.accent2);
+          return out;
+      }
+
+
+      const CYBERPUNK_PALETTE = { bg: parseColor('rgba(0, 0, 0, 1)'), primary: parseColor('#FFFFFF'), accent1: parseColor('rgba(0, 255, 255, 1)'), accent2: parseColor('rgba(255, 0, 255, 1)') };
+      const ACID_DREAM_PALETTE = { bg: parseColor('rgba(10, 25, 10, 1)'), primary: parseColor('#D4FF00'), accent1: parseColor('rgba(0, 150, 255, 1)'), accent2: parseColor('rgba(255, 50, 150, 1)') };
+      const SOLAR_FLARE_PALETTE = { bg: parseColor('rgba(20, 0, 30, 1)'), primary: parseColor('#FFFF00'), accent1: parseColor('rgba(255, 120, 0, 1)'), accent2: parseColor('rgba(255, 40, 0, 1)') };
+
+      const currentPaletteState = {
+        bg: { r: 0, g: 0, b: 0, a: 1 },
+        primary: { r: 0, g: 0, b: 0, a: 1 },
+        accent1: { r: 0, g: 0, b: 0, a: 1 },
+        accent2: { r: 0, g: 0, b: 0, a: 1 },
+      };
+
+      function updateCurrentPalette(t, palette) {
+          const transitionDuration = 1.0;
+          if (t >= 44 && t < 44 + transitionDuration) {
+              lerpPalette(CYBERPUNK_PALETTE, ACID_DREAM_PALETTE, (t - 44) / transitionDuration, palette);
+          } else if (t >= 44 + transitionDuration && t < 58) {
+              Object.assign(palette.bg, ACID_DREAM_PALETTE.bg);
+              Object.assign(palette.primary, ACID_DREAM_PALETTE.primary);
+              Object.assign(palette.accent1, ACID_DREAM_PALETTE.accent1);
+              Object.assign(palette.accent2, ACID_DREAM_PALETTE.accent2);
+          } else if (t >= 58 && t < 58 + transitionDuration) {
+              lerpPalette(ACID_DREAM_PALETTE, SOLAR_FLARE_PALETTE, (t - 58) / transitionDuration, palette);
+          } else if (t >= 58 + transitionDuration && t < 70) {
+              Object.assign(palette.bg, SOLAR_FLARE_PALETTE.bg);
+              Object.assign(palette.primary, SOLAR_FLARE_PALETTE.primary);
+              Object.assign(palette.accent1, SOLAR_FLARE_PALETTE.accent1);
+              Object.assign(palette.accent2, SOLAR_FLARE_PALETTE.accent2);
+          } else if (t >= 70 && t < 70 + transitionDuration) {
+              lerpPalette(SOLAR_FLARE_PALETTE, CYBERPUNK_PALETTE, (t - 70) / transitionDuration, palette);
+          } else {
+              Object.assign(palette.bg, CYBERPUNK_PALETTE.bg);
+              Object.assign(palette.primary, CYBERPUNK_PALETTE.primary);
+              Object.assign(palette.accent1, CYBERPUNK_PALETTE.accent1);
+              Object.assign(palette.accent2, CYBERPUNK_PALETTE.accent2);
+          }
+          return palette;
+      }
+
+
+      const p = (() => { const p = []; while (p.length < 256) { const val = Math.floor(Math.random() * 256); if (p.indexOf(val) === -1) p.push(val); } return p.concat(p); })();
+      function noise(x, y) {
+          const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255, xf = x - Math.floor(x), yf = y - Math.floor(y);
+          const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10), v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
+          const grad = (hash, x, y) => { const h = hash & 15; return ((h & 1) === 0 ? x : -x) + ((h & 2) === 0 ? y : -y); };
+          const n00 = grad(p[p[xi] + yi], xf, yf), n01 = grad(p[p[xi] + yi + 1], xf, yf - 1), n10 = grad(p[p[xi + 1] + yi], xf - 1, yf), n11 = grad(p[p[xi + 1] + yi + 1], xf - 1, yf - 1);
+          return (lerp(lerp(n00, n10, u), lerp(n01, n11, u), v) + 1) / 2;
+      }
+
+
+      class AudioAnalyzer {
+          constructor(url) {
+              this.url = url;
+              this.audioContext = null;
+              this.analyser = null;
+              this.audioBuffer = null;
+              this.sourceNode = null;
+              this.startTime = 0;
+              this.duration = 0;
+              this.hasEnded = false;
+          }
+
+          async setup(updateStatus) {
+              try {
+                  updateStatus("loading", "Initializing Audio...");
+                  this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                  updateStatus("loading", "Fetching Music...");
+                  const response = await fetch(this.url);
+                  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                  updateStatus("loading", "Decoding Audio...");
+                  const arrayBuffer = await response.arrayBuffer();
+                  this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                  this.duration = this.audioBuffer.duration;
+
+                  this.analyser = this.audioContext.createAnalyser();
+                  this.analyser.fftSize = FFT_SIZE;
+
+                  updateStatus("ready");
+              } catch (err) {
+                  updateStatus("error", `Audio Error: ${err.message}`);
+              }
+          }
+
+          start(onEndedCallback) {
+              if (!this.audioContext || !this.audioBuffer || !this.analyser || this.sourceNode) return;
+              this.hasEnded = false;
+              this.sourceNode = this.audioContext.createBufferSource();
+              this.sourceNode.buffer = this.audioBuffer;
+              this.sourceNode.connect(this.analyser);
+              this.analyser.connect(this.audioContext.destination);
+              this.sourceNode.onended = () => {
+                  this.hasEnded = true;
+                  this.sourceNode = null;
+                  if (onEndedCallback) onEndedCallback();
+              };
+              this.sourceNode.start();
+              this.startTime = this.audioContext.currentTime;
+          }
+
+          getAnalysisData(frequencyDataArray) {
+              if (!this.analyser) return null;
+              this.analyser.getByteFrequencyData(frequencyDataArray);
+              return frequencyDataArray;
+          }
+
+          getCurrentTime() {
+              if (this.hasEnded) return this.duration;
+              if (!this.audioContext || !this.sourceNode) return 0;
+              return this.audioContext.currentTime - this.startTime;
+          }
+      }
+
+
+      class WebGLPostProcessor {
+          constructor(canvas, demoCanvas) {
+              this.canvas = canvas;
+              this.demoCanvas = demoCanvas;
+              this.gl = canvas.getContext('webgl');
+              if (!this.gl) { console.error("WebGL not supported!"); return; }
+              this.program = this.createProgram(this.gl, this.vertexShaderSource, this.fragmentShaderSource);
+              this.texture = this.createTexture(this.gl);
+              this.initBuffers(this.gl);
+          }
+
+          createShader(gl, type, source) {
+              const shader = gl.createShader(type);
+              gl.shaderSource(shader, source);
+              gl.compileShader(shader);
+              if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                  console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                  gl.deleteShader(shader);
+                  return null;
+              }
+              return shader;
+          }
+
+          createProgram(gl, vsSource, fsSource) {
+              const vertexShader = this.createShader(gl, gl.VERTEX_SHADER, vsSource);
+              const fragmentShader = this.createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+              const program = gl.createProgram();
+              gl.attachShader(program, vertexShader);
+              gl.attachShader(program, fragmentShader);
+              gl.linkProgram(program);
+              if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                  console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+                  return null;
+              }
+              return program;
+          }
+
+          createTexture(gl) {
+              const texture = gl.createTexture();
+              gl.bindTexture(gl.TEXTURE_2D, texture);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              return texture;
+          }
+
+          initBuffers(gl) {
+              const buffer = gl.createBuffer();
+              gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+          }
+
+          render(audioData) {
+              const { gl, program, texture, demoCanvas, canvas } = this;
+              if (!gl || !program) return;
+
+              canvas.width = window.innerWidth;
+              canvas.height = window.innerHeight;
+              gl.viewport(0, 0, canvas.width, canvas.height);
+              gl.useProgram(program);
+
+              gl.bindTexture(gl.TEXTURE_2D, texture);
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, demoCanvas);
+
+              gl.uniform2f(gl.getUniformLocation(program, "u_resolution"), canvas.width, canvas.height);
+              gl.uniform1f(gl.getUniformLocation(program, "u_time"), audioData.currentTime);
+              gl.uniform1f(gl.getUniformLocation(program, "u_bassEnergy"), audioData.bassEnergy);
+              gl.uniform1f(gl.getUniformLocation(program, "u_snareEnergy"), audioData.snareEnergy);
+
+              const positionLocation = gl.getAttribLocation(program, "a_position");
+              gl.enableVertexAttribArray(positionLocation);
+              gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+              gl.drawArrays(gl.TRIANGLES, 0, 6);
+          }
+
+          vertexShaderSource = `
+            attribute vec2 a_position; varying vec2 v_texCoord;
+            void main() { gl_Position = vec4(a_position, 0.0, 1.0); v_texCoord = vec2(a_position.x * 0.5 + 0.5, 1.0 - (a_position.y * 0.5 + 0.5)); }`;
+          fragmentShaderSource = `
+            precision mediump float; uniform sampler2D u_texture; uniform vec2 u_resolution; uniform float u_time; uniform float u_bassEnergy; uniform float u_snareEnergy; varying vec2 v_texCoord;
+            vec2 barrelDistort(vec2 uv, float strength) { vec2 p = uv - 0.5; return uv + p * dot(p,p) * strength; }
+            void main() {
+              float barrel_strength = 0.12, ca_offset = 0.0035 + u_snareEnergy * 0.005, scanline_intensity = 0.15, vignette_strength = 0.9, bloom_threshold = 0.7;
+              vec2 distortedUV = barrelDistort(v_texCoord, barrel_strength);
+              if (distortedUV.x < 0.0 || distortedUV.x > 1.0 || distortedUV.y < 0.0 || distortedUV.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+              vec4 color;
+              color.r = texture2D(u_texture, distortedUV + vec2(ca_offset, 0.0)).r;
+              color.g = texture2D(u_texture, distortedUV).g;
+              color.b = texture2D(u_texture, distortedUV - vec2(ca_offset, 0.0)).b;
+              color.a = 1.0;
+              float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+              float bloom = smoothstep(bloom_threshold, bloom_threshold + 0.1, brightness) * u_bassEnergy * 0.35;
+              color.rgb += bloom;
+              float scanline = sin(distortedUV.y * u_resolution.y * 0.5 * 3.14159) * scanline_intensity;
+              color.rgb = clamp(color.rgb - scanline, 0.0, 1.0);
+              float vignette = length(v_texCoord - 0.5);
+              color.rgb *= 1.0 - pow(vignette, 2.0) * vignette_strength;
+              gl_FragColor = color;
+            }`;
+      }
+
+
+      class UiScreen {
+          constructor(canvas) {
+              this.canvas = canvas;
+              this.ctx = canvas.getContext('2d');
+              this.state = { status: 'loading', message: '', isHovering: false };
+              this.buttonRect = { x: 0, y: 0, w: 0, h: 0 };
+              this.t = 0;
+              this.animationFrameId = null;
+
+              this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+          }
+
+          setState(status, message = '') {
+              this.state.status = status;
+              this.state.message = message;
+          }
+
+          attachClickHandler(handler) {
+              this.clickHandler = (e) => {
+                  if (this.state.status === 'ready' && this.state.isHovering) {
+                      handler();
+                  }
+              };
+              this.canvas.addEventListener('click', this.clickHandler);
+          }
+
+          handleMouseMove(e) {
+              const rect = this.canvas.getBoundingClientRect();
+              const x = e.clientX - rect.left, y = e.clientY - rect.top;
+              const { x: bx, y: by, w: bw, h: bh } = this.buttonRect;
+              this.state.isHovering = (x > bx && x < bx + bw && y > by && y < by + bh);
+          }
+
+          render() {
+              this.t += 0.02;
+              const { width, height } = this.canvas;
+              const { ctx } = this;
+
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, width, height);
+
+              const titleSize = Math.min(width * 0.1, 120);
+              const driftX1 = Math.sin(this.t / 2) * 2, driftY1 = Math.cos(this.t / 2) * 2;
+              const driftX2 = Math.sin(this.t / 2.5) * -2, driftY2 = Math.cos(this.t / 2.5) * -2;
+              const titleY = height * 0.38;
+              scribbleText(ctx, "TR4C3", width / 2 + driftX1, titleY + driftY1, titleSize, 2, 'rgba(0, 255, 255, 0.7)');
+              scribbleText(ctx, "TR4C3", width / 2 + driftX2, titleY + driftY2, titleSize, 2, 'rgba(255, 0, 255, 0.7)');
+              scribbleText(ctx, "TR4C3", width / 2, titleY, titleSize, 3, '#FFF');
+
+              const statusY = height * 0.62;
+              switch(this.state.status) {
+                  case 'ended':
+                      scribbleText(ctx, "THANKS FOR WATCHING", width / 2, statusY, 30, 3, '#FFF');
+                      break;
+                  case 'loading':
+                      const pulseLoad = (Math.sin(this.t * 5) + 1) / 2;
+                      scribbleText(ctx, this.state.message.toUpperCase(), width / 2, statusY, 24, 1 + pulseLoad * 2, `rgba(255,255,255, ${0.5 + pulseLoad * 0.5})`);
+                      break;
+                  case 'error':
+                      scribbleText(ctx, this.state.message, width / 2, statusY, 18, 1, 'rgb(255, 80, 80)');
+                      break;
+                  case 'ready':
+                      const buttonWidth = 400, buttonHeight = 80;
+                      this.buttonRect = { x: (width - buttonWidth) / 2, y: statusY - buttonHeight / 2, w: buttonWidth, h: buttonHeight };
+                      const pulseReady = (Math.sin(this.t * 4) + 1) / 2;
+                      const roughness = 3 + pulseReady * 4;
+                      const fillStyle = this.state.isHovering ? 'rgba(255,255,255,0.1)' : undefined;
+                      scribbleRect(ctx, this.buttonRect.x, this.buttonRect.y, this.buttonRect.w, this.buttonRect.h, roughness, '#FFF', 2, fillStyle);
+                      scribbleText(ctx, "CLICK TO START", width / 2, statusY, 30, roughness / 2, '#FFF');
+                      break;
+              }
+          }
+
+          start() {
+              const loop = () => {
+                  this.render();
+                  this.animationFrameId = requestAnimationFrame(loop);
+              };
+              loop();
+          }
+
+          stop() {
+              if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+              if (this.clickHandler) this.canvas.removeEventListener('click', this.clickHandler);
+              this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+          }
+      }
+
+
+
+      const CUBE_VERTICES = [{x:-1,y:-1,z:-1},{x:1,y:-1,z:-1},{x:1,y:1,z:-1},{x:-1,y:1,z:-1},{x:-1,y:-1,z:1},{x:1,y:-1,z:1},{x:1,y:1,z:1},{x:-1,y:1,z:1}];
+      const CUBE_EDGES = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+      const projectedVertices = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+      const STARFIELD_SIZE = 500;
+      let stars = Array.from({ length: STARFIELD_SIZE }, () => ({ x: (Math.random() - 0.5) * 2000, y: (Math.random() - 0.5) * 2000, z: Math.random() * 2000 }));
+      const MAX_PARTICLES = 1000;
+      const particlePool = Array.from({ length: MAX_PARTICLES }, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, size: 0, roughness: 0, color: '', active: false }));
+      let particlePoolIndex = 0;
+      const plasmaGrid = [];
+      const mainScroller = { x: 0, textWidth: 0, isInitialized: false };
+      const outroScroller = { x: 0, textWidth: 0, isInitialized: false };
+      const transitionStates = {
+          cubeShatter: { initialized: false, particles: [] },
+      };
+      const camera = { x: 0, y: 0, z: 0, fov: 150 };
+      let lastSceneKey = null;
+
+
+      const tempColor = {r:0, g:0, b:0, a:1};
+      const tempVector = {x:0, y:0, z:0};
+
+      function renderVectorField(ctx, w, h, t, audioData, palette, transitionProgress = 0) {
+        const { bassEnergy, mids, highs } = audioData; const gridSize = 30; const noiseScale = 0.02; const gridScale = 1.0 - bassEnergy * 0.05;
+        const timeEvolution = t * (0.1 + mids * 0.3); const turbulence = 1.5; const timeX = Math.cos(timeEvolution) * turbulence; const timeY = Math.sin(timeEvolution) * turbulence;
+        const shockwaveRadius = (1 - bassEnergy) * w * 0.6; const shockwaveWidth = 100;
+        for (let y = 0; y < h / gridScale; y += gridSize) { for (let x = 0; x < w / gridScale; x += gridSize) {
+          const gridX = (x * gridScale) + (w * (1 - gridScale) / 2); const gridY = (y * gridScale) + (h * (1 - gridScale) / 2);
+          const noiseAngle = noise(gridX * noiseScale + timeX, gridY * noiseScale + timeY) * Math.PI * 4;
+          let finalAngle = noiseAngle; let lineLength = 15 + mids * 30;
+          const normalizedAngle = (finalAngle % (TWO_PI) + TWO_PI) % (TWO_PI) / (TWO_PI);
+          lerpColor(palette.accent1, palette.accent2, normalizedAngle, tempColor);
+          tempColor.a = (0.5 + mids * 0.4) * (1.0 - transitionProgress);
+          let finalColorStr = rgbaToString(tempColor);
+          let lineWidth = 1.5;
+          const dx = gridX - w/2, dy = gridY - h/2; const distFromCenter = Math.sqrt(dx*dx + dy*dy);
+
+          if (transitionProgress > 0) {
+              const outwardAngle = Math.atan2(dy, dx);
+              finalAngle = lerp(noiseAngle, outwardAngle, transitionProgress);
+          }
+
+          if (Math.abs(distFromCenter - shockwaveRadius) < shockwaveWidth / 2 && bassEnergy > 0.1) {
+            const influence = bassEnergy * (1 - Math.abs(distFromCenter - shockwaveRadius) / (shockwaveWidth / 2));
+            const shockwaveAngle = Math.atan2(dy, dx); finalAngle = lerp(finalAngle, shockwaveAngle, influence * 1.5);
+            lineLength += influence * 60;
+            tempColor.r = palette.primary.r; tempColor.g = palette.primary.g; tempColor.b = palette.primary.b;
+            tempColor.a = (0.6 + influence * 0.4) * (1.0 - transitionProgress);
+            finalColorStr = rgbaToString(tempColor);
+            lineWidth += influence * 2;
+          }
+          const x2 = gridX + Math.cos(finalAngle) * lineLength, y2 = gridY + Math.sin(finalAngle) * lineLength;
+          scribbleLine(ctx, gridX, gridY, x2, y2, 3, finalColorStr, lineWidth);
+          const headAlpha = highs * 0.9 * (1.0 - transitionProgress);
+          if (headAlpha > 0.15) {
+            const headSize = 1 + highs * 8;
+            tempColor.r = palette.primary.r; tempColor.g = palette.primary.g; tempColor.b = palette.primary.b;
+            tempColor.a = headAlpha;
+            const headColor = rgbaToString(tempColor);
+            scribbleCircle(ctx, x2, y2, headSize, 2, headColor, 1);
+          }
+        }}
+      }
+      function renderSquareTunnel(ctx, w, h, t, audioData, palette, transitionProgress = 0) {
+        const { snareEnergy } = audioData; const numSquares = 20; let centerX = w / 2, centerY = h / 2;
+        for (let i = 0; i < numSquares; i++) {
+          const progress = (i / numSquares + (t * 0.6) % (1 / numSquares)); const z = progress * progress;
+          let size = (1 - z) * w * 1.2;
+          const alpha = (1-z) * 0.9;
+          let rotation = z * Math.PI + t * 0.5;
+
+          if (transitionProgress > 0) {
+              const eased = transitionProgress * transitionProgress;
+              rotation += eased * Math.PI * 2;
+              size *= (1.0 - eased);
+          }
+
+          ctx.save(); ctx.translate(centerX, centerY); ctx.rotate(rotation);
+          const color = lerpColor(palette.accent1, palette.accent2, (i % 2), tempColor);
+          color.a = alpha;
+          const finalColor = rgbaToString(color);
+          const roughness = 5 + snareEnergy * 15;
+          scribbleRect(ctx, -size/2, -size/2, size, size, roughness, finalColor, 3);
+          ctx.restore();
+        }
+      }
+      function renderFadingStarfield(ctx, w, h, t, bass, progress, palette) {
+          const easedProgress = progress * progress;
+          ctx.translate(w / 2, h / 2);
+          const primaryColor = palette.primary;
+          const starColorStr = `rgb(${primaryColor.r|0},${primaryColor.g|0},${primaryColor.b|0})`;
+          stars.forEach(star => {
+              star.x = lerp(star.x, 0, easedProgress * 0.05);
+              star.y = lerp(star.y, 0, easedProgress * 0.05);
+              star.z -= 20 + easedProgress * 200;
+              if (star.z <= 1) {
+                  star.z = 4000;
+                  star.x = (Math.random() - 0.5) * 4000;
+                  star.y = (Math.random() - 0.5) * 4000;
+              }
+              const k = 256 / star.z;
+              const px = star.x * k;
+              const py = star.y * k;
+              const size = (1 - star.z / 4000) * 5;
+              const brightness = Math.min(1, (1 - star.z / 4000) * 1.5) * (1 - easedProgress);
+              if (px > -w / 2 && px < w / 2 && py > -h / 2 && py < h / 2) {
+                  ctx.globalAlpha = brightness;
+                  scribbleStar(ctx, px, py, size, 5, starColorStr);
+              }
+          });
+          ctx.globalAlpha = 1.0;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      function spawnParticles(x, y, count, type, palette) {
+        for (let i = 0; i < count; i++) {
+          const p = particlePool[particlePoolIndex]; p.active = true; p.x = x; p.y = y;
+          const angle = Math.random() * TWO_PI, speed = 2 + Math.random() * (type === 'bass' ? 8:5);
+          p.vx = Math.cos(angle) * speed; p.vy = Math.sin(angle) * speed;
+          p.life = 60 + Math.random() * 40; p.size = type === 'bass' ? 5+Math.random()*7 : 3+Math.random()*4;
+          p.roughness = 2 + Math.random() * 3;
+          const baseColor = type === 'bass' ? palette.accent2 : palette.accent1;
+          p.color = `rgb(${baseColor.r|0}, ${baseColor.g|0}, ${baseColor.b|0})`;
+          particlePoolIndex = (particlePoolIndex + 1) % MAX_PARTICLES;
+        }
+      }
+      function renderParticles(ctx, w, h, bass) {
+        for (const p of particlePool) { if (!p.active) continue;
+          p.x += p.vx; p.y += p.vy; p.life -= 1;
+          if (p.life <= 0 || p.x<0 || p.x>w || p.y<0 || p.y>h) {
+            p.active = false;
+          } else {
+            ctx.globalAlpha = p.life/100;
+            scribbleCircle(ctx, p.x, p.y, p.size, p.roughness, p.color, 1+bass*1.5);
+          }
+        }
+        ctx.globalAlpha = 1.0;
+      }
+      function renderBackgroundNoise(ctx, w, h, palette) {
+        const numParticles = Math.floor(w * h * 0.0003); const color = rgbaToString({ ...palette.primary, a: 0.05 });
+        for (let i = 0; i < numParticles; i++) scribbleStar(ctx, Math.random()*w, Math.random()*h, 0.5+Math.random()*0.5, 4, color);
+      }
+      function renderIntro(ctx, w, h, t, bass, palette) {
+        const text = "TR4C3", reveal = Math.floor(t * 3);
+        scribbleText(ctx, text.substring(0, reveal), w/2, h/2, Math.min(w,h)/10, bass*5, rgbaToString(palette.primary));
+        const pulseRadius = 50 + bass*150;
+        tempColor.r = palette.primary.r; tempColor.g = palette.primary.g; tempColor.b = palette.primary.b;
+        tempColor.a = 0.2 + bass * 0.5;
+        const color = rgbaToString(tempColor);
+        scribbleCircle(ctx, w/2, h/2, pulseRadius, 5, color, 2);
+      }
+      function renderStarfield(ctx, w, h, t, bass, move, palette) {
+        ctx.translate(w/2, h/2); const speed = move ? (t - 7.5) * 50 : 20;
+        const primaryColor = palette.primary;
+        const starColorStr = `rgb(${primaryColor.r|0},${primaryColor.g|0},${primaryColor.b|0})`;
+        stars.forEach(star => {
+          star.z -= speed; if(star.z <= 0) { star.z = 2000; star.x = (Math.random()-0.5)*2000; star.y = (Math.random()-0.5)*2000; }
+          const k = 256/star.z, px = star.x*k, py = star.y*k, size=(1-star.z/2000)*5+bass*3, brightness=Math.min(1,(1-star.z/2000)*1.5);
+          if (px > -w/2 && px < w/2 && py > -h/2 && py < h/2) {
+            ctx.globalAlpha = brightness;
+            scribbleStar(ctx, px, py, size, 5, starColorStr);
+          }
+        });
+        ctx.globalAlpha = 1.0;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      function renderTunnel(ctx, w, h, t, mids, palette, cam) {
+        const numCircles=15, baseRadius=w*0.8, centerX=w/2-cam.x*20, centerY=h/2-cam.y*20;
+        for (let i = 0; i < numCircles; i++) {
+          const progress=(i/numCircles+(t*0.4)%(1/numCircles)), z=progress, radius=(1-z)*baseRadius*(1+mids*0.2), alpha=(1-z)*0.8;
+          const wobbleX=Math.sin(t*2+i)*20*mids, wobbleY=Math.cos(t*2+i)*20*mids;
+          if(i%4===2) {
+            tempColor.r = palette.accent2.r; tempColor.g = palette.accent2.g; tempColor.b = palette.accent2.b; tempColor.a = alpha * 0.9;
+            scribbleBlob(ctx, centerX+wobbleX, centerY+wobbleY, radius, 20+mids*60, rgbaToString(tempColor),3,t);
+          } else {
+            tempColor.r = palette.primary.r; tempColor.g = palette.primary.g; tempColor.b = palette.primary.b; tempColor.a = alpha;
+            scribbleCircle(ctx, centerX+wobbleX, centerY+wobbleY, radius, 10, rgbaToString(tempColor),2);
+          }
+        }
+      }
+      function calculateCubeState(t, w, h, highs, bassEnergy, mids, palette, cam) {
+          const angleX = t * 0.5, angleY = t * 0.3 + highs * 0.5, angleZ = t * 0.2, size = (Math.min(w, h) / 8) * (1 + bassEnergy * 0.5);
+          const sinX = Math.sin(angleX), cosX = Math.cos(angleX), sinY = Math.sin(angleY), cosY = Math.cos(angleY), sinZ = Math.sin(angleZ), cosZ = Math.cos(angleZ);
+          const twistFactor = mids * 2.5;
+          CUBE_VERTICES.forEach((v, i) => {
+              const p = tempVector;
+
+              const twistAngle = v.y * twistFactor;
+              const cosTwist = Math.cos(twistAngle);
+              const sinTwist = Math.sin(twistAngle);
+              const twistedX = v.x * cosTwist - v.z * sinTwist;
+              const twistedZ = v.x * sinTwist + v.z * cosTwist;
+
+              const rotX_Y = v.y * cosX - twistedZ * sinX;
+              const rotX_Z = v.y * sinX + twistedZ * cosX;
+
+              const rotY_X = twistedX * cosY + rotX_Z * sinY;
+              const rotY_Z = -twistedX * sinY + rotX_Z * cosY;
+
+              const rotZ_X = rotY_X * cosZ - rotX_Y * sinZ;
+              const rotZ_Y = rotY_X * sinZ + rotX_Y * cosZ;
+
+              p.x = rotZ_X;
+              p.y = rotZ_Y;
+              p.z = rotY_Z;
+
+              const view = { x: p.x - cam.x, y: p.y - cam.y, z: p.z - cam.z }, scale = cam.fov / (cam.fov + view.z);
+              projectedVertices[i].x = w / 2 + (view.x * scale * size);
+              projectedVertices[i].y = h / 2 + (view.y * scale * size);
+          });
+      }
+      function renderCube(ctx, w, h, t, highs, bassEnergy, mids, palette, cam) {
+          calculateCubeState(t, w, h, highs, bassEnergy, mids, palette, cam);
+          CUBE_EDGES.forEach(edge=>{const p1=projectedVertices[edge[0]],p2=projectedVertices[edge[1]]; scribbleLine(ctx,p1.x,p1.y,p2.x,p2.y,4,rgbaToString(palette.primary),3)});
+      }
+      function renderGeometricPattern(ctx, w, h, t, audioData, palette) {
+        const {bass,mids,highs}=audioData, sides=8, angleStep=TWO_PI/sides; ctx.save(); ctx.translate(w/2,h/2);
+        const rotationSpeed=t*(0.05+mids*0.2), zoom=1.0+bass*0.15; ctx.rotate(rotationSpeed); ctx.scale(zoom,zoom);
+        for(let i=0; i<sides; i++){ctx.save(); ctx.rotate(i*angleStep); drawKaleidoSegment(ctx,w,h,t,mids,highs,bass,palette); ctx.scale(1,-1); drawKaleidoSegment(ctx,w,h,t,mids,highs,bass,palette); ctx.restore()} ctx.restore();
+      }
+      function drawKaleidoSegment(ctx,w,h,t,mids,highs,bass,palette){const maxRadius=Math.min(w,h)*(0.35+mids*0.1);for(let i=0;i<5;i++){const timeOffset=t*1.5+i*0.8,r1=(timeOffset*20)%maxRadius,r2=(timeOffset*15)%maxRadius,x1=Math.cos(timeOffset*0.4+i)*r1,y1=Math.sin(timeOffset*0.7+i)*r1,x2=Math.cos(timeOffset*0.5-i)*r2,y2=Math.sin(timeOffset*0.3-i)*r2,alpha=0.4+mids*0.6,size=5+mids*15,roughness=2+mids*4;lerpColor(palette.accent1,palette.accent2,(Math.sin(t+i)+1)/2,tempColor);tempColor.a=alpha;scribbleLine(ctx,x1,y1,x2,y2,roughness,rgbaToString(tempColor),2);tempColor.r=palette.primary.r;tempColor.g=palette.primary.g;tempColor.b=palette.primary.b;tempColor.a=alpha;scribbleCircle(ctx,x1,y1,size,roughness/2,rgbaToString(tempColor),1)}const numParticles=3;for(let i=0;i<numParticles;i++){const timeOffset=t+i*2.5,px=Math.cos(timeOffset*0.3)*maxRadius*0.3*((i+1)/numParticles),py=Math.sin(timeOffset*0.5)*maxRadius*0.6*((i+1)/numParticles),particleSize=2+bass*12,particleRoughness=1+bass*3,particleAlpha=0.3+bass*0.7;tempColor.r=palette.accent2.r;tempColor.g=palette.accent2.g;tempColor.b=palette.accent2.b;tempColor.a=particleAlpha;scribbleCircle(ctx,px,py,particleSize,particleRoughness,rgbaToString(tempColor),1)}}
+      function renderPlasma(ctx,w,h,t,audioData,grid,palette){const{bass,mids,highs,bassHit}=audioData,gridSize=36,gridW=Math.ceil(w/gridSize)+1,gridH=Math.ceil(h/gridSize)+1;if(grid.length!==gridH||grid[0]?.length!==gridW){grid.length=0;for(let i=0;i<gridH;i++)grid.push(Array(gridW).fill(0))}const dynamicTime=t*(1+mids*1.5);for(let y=0;y<gridH;y++)for(let x=0;x<gridW;x++){const dx=x-gridW/2,dy=y-gridH/2,dist=Math.sqrt(dx*dx+dy*dy),shockwave=bassHit?Math.sin(dist*0.8-t*10)*0.8:0;grid[y][x]=(Math.sin(x*0.2+dynamicTime)+Math.sin(y*0.1+dynamicTime*0.5)+Math.sin((x+y)*0.08+dynamicTime*2)+Math.sin(dist*0.3-dynamicTime*1.5)+shockwave+4)/8}for(let y=0;y<gridH;y++)for(let x=0;x<gridW;x++){const val=grid[y][x];lerpColor(palette.accent2,palette.accent1,val,tempColor);const finalColor=lerpColor(tempColor,palette.primary,val*val,tempColor);finalColor.a=0.6+val*0.4;const color=rgbaToString(finalColor),radius=5+val*20+mids*15,roughness=2+(val*val)*15+highs*5,lineWidth=1+bass*2.5;scribbleCircle(ctx,x*gridSize,y*gridSize,radius,roughness,color,lineWidth);if(highs>0.5&&val>0.85){const sparkleX=x*gridSize+(Math.random()-0.5)*15,sparkleY=y*gridSize+(Math.random()-0.5)*15,sparkleSize=3+highs*8,sparkleAlpha=(highs-0.5)/0.5;tempColor.r=palette.primary.r;tempColor.g=palette.primary.g;tempColor.b=palette.primary.b;tempColor.a=sparkleAlpha;scribbleStar(ctx,sparkleX,sparkleY,sparkleSize,4,rgbaToString(tempColor))}}}
+      function setupKaleidoToPlasmaTransition(w,h,particles){particles.length=0;const gridSize=24,gridW=Math.ceil(w/gridSize)+1,gridH=Math.ceil(h/gridSize)+1,targetPoints=[];for(let y=0;y<gridH;y++)for(let x=0;x<gridW;x++)targetPoints.push({x:x*gridSize,y:y*gridSize});const numParticles=targetPoints.length,shuffledTargets=[...targetPoints].sort(()=>Math.random()-0.5),sides=8,maxRadius=Math.min(w,h)*0.5;for(let i=0;i<numParticles;i++){const angle=(i/numParticles)*TWO_PI*(sides/2),radius=Math.random()*maxRadius,sx=w/2+Math.cos(angle)*radius,sy=h/2+Math.sin(angle)*radius,target=shuffledTargets[i];particles.push({sx,sy,ex:target.x,ey:target.y,startSize:2+Math.random()*10,endSize:5+Math.random()*20,startColor:ACID_DREAM_PALETTE.primary,endColor:SOLAR_FLARE_PALETTE.accent1})}}
+      let kaleidoToPlasmaParticles = [];
+      function renderKaleidoToPlasmaTransition(ctx,w,h,t,audioData){const progress=(t-58)/2,easedProgress=progress<0.5?2*progress*progress:1-Math.pow(-2*progress+2,2)/2;kaleidoToPlasmaParticles.forEach(p=>{const x=p.sx+(p.ex-p.sx)*easedProgress,y=p.sy+(p.ey-p.sy)*easedProgress,size=p.startSize+(p.endSize-p.startSize)*easedProgress,roughness=5+(1-easedProgress)*5;lerpColor(p.startColor,p.endColor,easedProgress,tempColor);scribbleCircle(ctx,x,y,size,roughness,rgbaToString(tempColor),1+audioData.bass)})}
+
+      const MAIN_SCROLLER_SECTIONS = [
+          { type: 'separator' },
+          { type: 'greeting', text: "TR4C3 LOADING... TRACE CONNECTING... TRACE LIVE." },
+          { type: 'separator' },
+          { type: 'tech', text: "        COMPUTING...      " },
+          { type: 'separator' },
+      ];
+      const OUTRO_SCROLLER_SECTIONS = [
+          { type: 'greeting', text: 'TR4C3' }
+      ];
+      const MAIN_SCROLLER_OPTIONS = { textSections: MAIN_SCROLLER_SECTIONS, y: h => h - 60, fontSize: 96, speed: 1.8, letterSpacing: 24, getAmplitude: audioData => 3 + audioData.bassEnergy * 20 };
+      const OUTRO_SCROLLER_OPTIONS = { textSections: OUTRO_SCROLLER_SECTIONS, y: h => h / 2, fontSize: 64, speed: 1.2, letterSpacing: 16, getAmplitude: audioData => 5 + audioData.bassEnergy * 10, effect: 'singularity' };
+
+      function renderScroller(ctx, w, h, t, audioData, scroller, palette, options) {
+          const { textSections, y, fontSize, speed, letterSpacing, getAmplitude, effect } = options;
+
+          if (!scroller.isInitialized) {
+              scroller.isInitialized = true;
+              scroller.x = w;
+              let totalWidth = 0;
+              ctx.font = `${fontSize}px "Gochi Hand", monospace`;
+              textSections.forEach(section => {
+                  if (section.type === 'separator') {
+                      totalWidth += 150;
+                  } else {
+                      totalWidth += [...section.text].reduce((acc, char) => acc + ctx.measureText(char).width + letterSpacing, 0);
+                  }
+              });
+              scroller.textWidth = totalWidth;
+          }
+
+          scroller.x -= speed;
+          if (scroller.x < -scroller.textWidth) scroller.x = w;
+
+          const yBase = y(h);
+          const amplitude = getAmplitude(audioData);
+          const roughness = 1 + audioData.mids * 4;
+
+          let currentX = scroller.x;
+
+          const singularityProgress = (effect === 'singularity' && audioData.duration > 0)
+              ? Math.min(1.0, (audioData.currentTime - 126) / (audioData.duration - 126))
+              : 0;
+          const easedSingularityProgress = singularityProgress * singularityProgress;
+
+          for (const section of textSections) {
+              if (currentX > w + 200) break;
+              if (currentX < -scroller.textWidth) {
+                  if (section.type === 'separator') {
+                      currentX += 150;
+                  } else {
+                      ctx.font = `${fontSize}px "Gochi Hand", monospace`;
+                      currentX += [...section.text].reduce((acc, char) => acc + ctx.measureText(char).width + letterSpacing, 0);
+                  }
+                  continue;
+              }
+
+              if (section.type === 'separator') {
+                  const separatorWidth = 150;
+                  if (currentX > -separatorWidth && currentX < w) {
+                      const separatorY = yBase + Math.sin(currentX * 0.02 + t * 3) * amplitude;
+                      const starColor = palette.primary;
+
+                      ctx.save();
+                      if (effect === 'singularity') {
+                           const centerX = w / 2;
+                           const distFromCenter = Math.abs(currentX + separatorWidth/2 - centerX);
+                           const pullFactor = Math.pow(1.0 - Math.min(1.0, distFromCenter / (w / 2)), 2.0);
+                           const alpha = Math.max(0, 1.0 - easedSingularityProgress * 1.5);
+                           ctx.globalAlpha = alpha;
+                      }
+                      scribbleStar(ctx, currentX + separatorWidth / 2 - 40, separatorY, 10 + audioData.highs * 10, 5, rgbaToString(starColor));
+                      scribbleStar(ctx, currentX + separatorWidth / 2, separatorY, 15 + audioData.bass * 15, 5, rgbaToString(starColor));
+                      scribbleStar(ctx, currentX + separatorWidth / 2 + 40, separatorY, 10 + audioData.highs * 10, 5, rgbaToString(starColor));
+                      ctx.restore();
+                  }
+                  currentX += separatorWidth;
+                  continue;
+              }
+
+              let sectionColorObj = palette.primary;
+              let extraJitter = 0;
+
+              switch (section.type) {
+                  case 'greeting':
+                      sectionColorObj = palette.accent1;
+                      break;
+                  case 'tech':
+                      sectionColorObj = palette.accent2;
+                      extraJitter = audioData.snareEnergy * 6 * (Math.random() - 0.5);
+                      break;
+                  case 'music':
+                      sectionColorObj = palette.primary;
+                      const noteX = currentX - 60;
+                      if (noteX > -30 && noteX < w) {
+                          const noteY = yBase + Math.sin(noteX * 0.02 + t * 3) * amplitude;
+                          scribbleMusicNote(ctx, noteX, noteY, 20, rgbaToString(sectionColorObj), 2);
+                      }
+                      break;
+              }
+
+              ctx.font = `${fontSize}px "Gochi Hand", monospace`;
+
+              for (const char of section.text) {
+                  const charWidth = ctx.measureText(char).width;
+                  if (currentX > -charWidth && currentX < w) {
+                      const yPosSin = Math.sin(currentX * 0.02 + t * 3) * amplitude;
+                      const xWobble = Math.cos(currentX * 0.05 + t * 2.5) * audioData.mids * 8;
+                      const pulseOffset = Math.sin(currentX * 0.1 + t * 6);
+                      const pulseAmount = audioData.highs * 0.25 * pulseOffset;
+                      const pulsedFontSize = fontSize * (1 + pulseAmount);
+
+                      if (effect === 'singularity') {
+                          const centerX = w / 2;
+                          const distFromCenter = Math.abs(currentX - centerX);
+                          const pullFactor = Math.pow(1.0 - Math.min(1.0, distFromCenter / (w / 2)), 2.0);
+                          const verticalPull = (currentX - centerX) * 0.1 * pullFactor * easedSingularityProgress;
+                          const yPos = yBase + (yPosSin * (1.0 - easedSingularityProgress)) + verticalPull;
+                          const scale = Math.max(0.01, 1.0 - pullFactor * easedSingularityProgress);
+                          const finalScale = scale * (1 + pulseAmount);
+
+                          ctx.save();
+                          ctx.translate(currentX + xWobble + extraJitter, yPos);
+                          ctx.scale(finalScale, finalScale);
+                          const alpha = Math.max(0, 1.0 - easedSingularityProgress * 1.5);
+                          const finalColor = rgbaToString({ ...sectionColorObj, a: alpha });
+                          scribbleText(ctx, char, 0, 0, fontSize, roughness, finalColor, 'left');
+                          ctx.restore();
+                      } else {
+                          const yPos = yBase + yPosSin;
+                          const finalColor = rgbaToString(sectionColorObj);
+                          scribbleText(ctx, char, currentX + xWobble + extraJitter, yPos, pulsedFontSize, roughness, finalColor, 'left');
+                      }
+                  }
+                  currentX += charWidth + letterSpacing;
+                  if (currentX > w + 20) break;
+              }
+          }
+      }
+
+
+      function renderCubeShatterTransition(ctx, w, h, t, audioData, palette) {
+          if (!transitionStates.cubeShatter.initialized) {
+              transitionStates.cubeShatter.particles = [];
+              const lastCubeTime = 44;
+              const fakeCam = {x:0,y:0,z:0,fov:150};
+              const orbitRadius = 6;
+              fakeCam.x = Math.sin(lastCubeTime * 0.4) * orbitRadius;
+              fakeCam.z = Math.cos(lastCubeTime * 0.4) * orbitRadius - orbitRadius;
+              fakeCam.y = Math.sin(lastCubeTime * 0.3) * 3;
+              calculateCubeState(lastCubeTime, w, h, audioData.highs, audioData.bassEnergy, audioData.mids, palette, fakeCam);
+              CUBE_EDGES.forEach(edge => {
+                  const p1 = projectedVertices[edge[0]];
+                  const p2 = projectedVertices[edge[1]];
+                  const midX = (p1.x + p2.x) / 2;
+                  const midY = (p1.y + p2.y) / 2;
+                  const angle = Math.atan2(midY - h/2, midX - w/2);
+                  const speed = 5 + Math.random() * 10;
+                  transitionStates.cubeShatter.particles.push({
+                      x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+                      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                      life: 1.0
+                  });
+              });
+              transitionStates.cubeShatter.initialized = true;
+          }
+
+          const progress = (t - 44) / 2.0;
+          const easedProgress = progress * progress;
+
+
+          ctx.globalAlpha = 1.0 - easedProgress;
+          const color = rgbaToString(palette.primary);
+          transitionStates.cubeShatter.particles.forEach(p => {
+              p.x1 += p.vx; p.y1 += p.vy;
+              p.x2 += p.vx; p.y2 += p.vy;
+              p.life -= 0.016;
+              if (p.life > 0) {
+                  scribbleLine(ctx, p.x1, p.y1, p.x2, p.y2, 4, color, 3);
+              }
+          });
+          ctx.globalAlpha = 1.0;
+
+
+          ctx.globalAlpha = easedProgress;
+          renderGeometricPattern(ctx, w, h, t, audioData, palette);
+          ctx.globalAlpha = 1.0;
+      }
+
+
+
+      const renderMovingStarfield = (ctx, w, h, audio, palette) => renderStarfield(ctx, w, h, audio.currentTime, audio.bass, true, palette);
+      const renderStaticStarfield = (ctx, w, h, audio, palette) => renderStarfield(ctx, w, h, audio.currentTime, audio.bass, false, palette);
+      const renderStandardTunnel = (ctx, w, h, audio, palette, cam) => renderTunnel(ctx, w, h, audio.currentTime, audio.mids, palette, cam);
+      const renderAmplifiedTunnel = (ctx, w, h, audio, palette, cam) => renderTunnel(ctx, w, h, audio.currentTime, audio.mids * 1.5, palette, cam);
+      const spawnBassParticles = (ctx, w, h, audio, palette) => { if (audio.bassEnergy > 0.6) spawnParticles(w / 2, h / 2, 10, 'bass', palette); };
+      const spawnMixedParticles = (ctx, w, h, audio, palette) => { if (audio.bassEnergy > 0.6 || audio.highs > 0.65) spawnParticles(w / 2, h / 2, 15, 'bass', palette); };
+      const spawnEndBassParticles = (ctx, w, h, audio, palette) => { if (audio.bassEnergy > 0.6) spawnParticles(w / 2, h / 2, 20, 'bass', palette); };
+      const renderParticlesWrapper = (ctx, w, h, audio) => renderParticles(ctx, w, h, audio.bass);
+      const renderMainScroller = (ctx, w, h, audio, palette) => renderScroller(ctx, w, h, audio.currentTime, audio, mainScroller, palette, MAIN_SCROLLER_OPTIONS);
+      const renderOutroScroller = (ctx, w, h, audio, palette) => renderScroller(ctx, w, h, audio.currentTime, audio, outroScroller, palette, OUTRO_SCROLLER_OPTIONS);
+      const renderCubeWrapper = (ctx, w, h, audio, palette, cam) => renderCube(ctx, w, h, audio.currentTime, audio.highs, audio.bassEnergy, audio.mids, palette, cam);
+      const renderGeometricPatternWrapper = (ctx, w, h, audio, palette) => renderGeometricPattern(ctx, w, h, audio.currentTime, audio, palette);
+      const renderPlasmaWrapper = (ctx, w, h, audio, palette) => renderPlasma(ctx, w, h, audio.currentTime, audio, plasmaGrid, palette);
+      const renderVectorFieldWrapper = (ctx, w, h, audio, palette) => renderVectorField(ctx, w, h, audio.currentTime, audio, palette, 0);
+      const renderSquareTunnelWrapper = (ctx, w, h, audio, palette) => renderSquareTunnel(ctx, w, h, audio.currentTime, audio, palette, 0);
+      const renderFadingStarfieldWrapper = (ctx, w, h, audio, palette) => {
+          const progress = audio.duration > 0 ? Math.min(1.0, (audio.currentTime - 126) / (audio.duration - 126)) : 0;
+          renderFadingStarfield(ctx, w, h, audio.currentTime, audio.bass, progress, palette);
+          if (progress > 0.9) {
+              const flashProgress = (progress - 0.9) / 0.1;
+              const alpha = Math.sin(flashProgress * Math.PI);
+              ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+              ctx.fillRect(0, 0, w, h);
+          }
+      };
+      const renderKaleidoToPlasmaTransitionWrapper = (ctx, w, h, audio) => {
+          renderKaleidoToPlasmaTransition(ctx, w, h, audio.currentTime, audio);
+      };
+
+      const renderCubeShatterTransitionWrapper = (ctx, w, h, audio, palette) => renderCubeShatterTransition(ctx, w, h, audio.currentTime, audio, palette);
+      const resetCubeShatter = () => { transitionStates.cubeShatter.initialized = false; };
+
+      const renderVectorFieldMorphTransitionWrapper = (ctx, w, h, audio, palette) => {
+          const progress = (audio.currentTime - 98) / 2.0;
+          renderVectorField(ctx, w, h, audio.currentTime, audio, palette, progress);
+          ctx.globalAlpha = progress;
+          renderGeometricPatternWrapper(ctx, w, h, audio, palette);
+          ctx.globalAlpha = 1.0;
+      };
+
+      const renderSquareTunnelCollapseTransitionWrapper = (ctx, w, h, audio, palette) => {
+          const progress = (audio.currentTime - 124) / 2.0;
+          renderSquareTunnel(ctx, w, h, audio.currentTime, audio, palette, progress);
+      };
+
+      const setupKaleidoTransition = (w,h) => { setupKaleidoToPlasmaTransition(w, h, kaleidoToPlasmaParticles); };
+      const resetKaleidoTransition = () => { kaleidoToPlasmaParticles = []; };
+
+      const sceneTimeline = [
+          { start: 0, end: 7.5, renderers: [(ctx, w, h, audio, palette) => renderIntro(ctx, w, h, audio.currentTime, audio.bass, palette)] },
+          { start: 7.5, end: 14.5, renderers: [renderMovingStarfield] },
+          { start: 14.5, end: 29, renderers: [renderStaticStarfield, renderStandardTunnel, spawnBassParticles, renderParticlesWrapper, renderMainScroller] },
+          { start: 29, end: 44, renderers: [renderStaticStarfield, renderStandardTunnel, renderCubeWrapper, spawnMixedParticles, renderParticlesWrapper, renderMainScroller] },
+          { start: 44, end: 46, onEnter: resetCubeShatter, renderers: [renderStaticStarfield, renderCubeShatterTransitionWrapper, renderMainScroller] },
+          { start: 46, end: 58, renderers: [renderStaticStarfield, renderGeometricPatternWrapper, renderMainScroller] },
+          { start: 58, end: 60, onEnter: setupKaleidoTransition, renderers: [renderStaticStarfield, renderKaleidoToPlasmaTransitionWrapper] },
+          { start: 60, end: 72, onEnter: resetKaleidoTransition, renderers: [renderPlasmaWrapper] },
+          { start: 72, end: 84, renderers: [renderStaticStarfield, renderAmplifiedTunnel, renderCubeWrapper, renderMainScroller] },
+          { start: 84, end: 98, renderers: [renderVectorFieldWrapper] },
+          { start: 98, end: 100, renderers: [renderVectorFieldMorphTransitionWrapper] },
+          { start: 100, end: 112, renderers: [renderStaticStarfield, renderGeometricPatternWrapper] },
+          { start: 112, end: 124, renderers: [renderSquareTunnelWrapper, spawnEndBassParticles, renderParticlesWrapper] },
+          { start: 124, end: 126, renderers: [renderSquareTunnelCollapseTransitionWrapper, spawnEndBassParticles, renderParticlesWrapper] },
+          { start: 126, end: Infinity, renderers: [renderFadingStarfieldWrapper, renderOutroScroller] }
+      ];
+
+      function renderDemo(ctx, width, height, audioData) {
+        const t = audioData.currentTime;
+        const currentPalette = updateCurrentPalette(t, currentPaletteState);
+
+        ctx.fillStyle = rgbaToString({ ...currentPalette.bg, a: 0.2 });
+        ctx.fillRect(0, 0, width, height);
+
+
+        camera.x = 0; camera.y = 0; camera.z = 0; camera.fov = 150;
+        if ((t > 29 && t < 44) || (t > 72 && t < 84)) {
+            const orbitRadius = 6;
+            camera.x = Math.sin(t * 0.4) * orbitRadius;
+            camera.z = Math.cos(t * 0.4) * orbitRadius - orbitRadius;
+            camera.y = Math.sin(t * 0.3) * 3;
+            if (audioData.bassHit) camera.z += 2;
+            camera.fov = 150 + audioData.snareEnergy * 60;
+        }
+
+        renderBackgroundNoise(ctx, width, height, currentPalette);
+
+
+        const activeScene = sceneTimeline.find(s => t >= s.start && t < s.end);
+
+        if (activeScene) {
+            const currentSceneKey = `${activeScene.start}-${activeScene.end}`;
+            if (lastSceneKey !== currentSceneKey) {
+                if (activeScene.onEnter) {
+
+                    if (activeScene.onEnter === setupKaleidoTransition) {
+                        activeScene.onEnter(width, height);
+                    } else {
+                        activeScene.onEnter();
+                    }
+                }
+                lastSceneKey = currentSceneKey;
+            }
+
+            for (const renderFunc of activeScene.renderers) {
+                renderFunc(ctx, width, height, audioData, currentPalette, camera);
+            }
+        }
+      }
+
+
+      function main() {
+          const demoCanvas = document.getElementById('demo-canvas');
+          const glCanvas = document.getElementById('gl-canvas');
+          const uiCanvas = document.getElementById('ui-canvas');
+          const demoCtx = demoCanvas.getContext('2d');
+
+          let demoState = 'loading';
+
+          let audioData = { frequencyData: new Uint8Array(FFT_SIZE / 2), currentTime: 0, duration: 0, bass: 0, mids: 0, highs: 0, melody: 0, sizzle: 0, bassEnergy: 0, snareEnergy: 0, bassHit: false, snareHit: false };
+          let audioEnergy = { bassEnergy: 0, snareEnergy: 0 };
+
+          const webglProcessor = new WebGLPostProcessor(glCanvas, demoCanvas);
+          const uiScreen = new UiScreen(uiCanvas);
+          const audioAnalyzer = new AudioAnalyzer(MUSIC_URL);
+
+          const updateUiStatus = (status, message = '') => uiScreen.setState(status, message);
+
+          const handleDemoEnd = () => {
+              setTimeout(() => {
+                  if (document.fullscreenElement) document.exitFullscreen().catch(err => console.error(err));
+                  demoState = 'ended';
+                  uiCanvas.style.display = 'block';
+                  document.body.style.cursor = 'auto';
+                  uiScreen.setState('ended');
+              }, 2500);
+          };
+
+          const handleStart = async () => {
+              try {
+                  await document.documentElement.requestFullscreen();
+              } catch (err) {
+                  console.warn("Could not enter fullscreen mode:", err);
+              } finally {
+                  audioAnalyzer.start(handleDemoEnd);
+                  demoState = 'running';
+                  uiCanvas.style.display = 'none';
+                  document.body.style.cursor = 'none';
+                  uiScreen.stop();
+              }
+          };
+
+          const animationLoop = () => {
+              if (demoState === 'running') {
+                  const frequencyData = audioAnalyzer.getAnalysisData(audioData.frequencyData);
+                  if (frequencyData) {
+                      const bass = (frequencyData[1] + frequencyData[2]) / 510;
+                      const mids = frequencyData.slice(10, 30).reduce((a,b)=>a+b,0) / 20 / 255;
+                      const highs = frequencyData.slice(50, 100).reduce((a,b)=>a+b,0) / 50 / 255;
+                      const snare = frequencyData.slice(30, 60).reduce((a,b)=>a+b,0) / 30 / 255;
+                      const melody = frequencyData.slice(20, 50).reduce((a,b)=>a+b,0) / 30 / 255;
+                      const sizzle = frequencyData.slice(90, 120).reduce((a,b)=>a+b,0) / 30 / 255;
+
+                      let bassHit = false;
+                      if (bass > 0.6 && audioEnergy.bassEnergy < 0.3) { audioEnergy.bassEnergy = 1.0; bassHit = true; }
+                      else { audioEnergy.bassEnergy *= 0.92; }
+
+                      let snareHit = false;
+                      if (snare > 0.55 && audioEnergy.snareEnergy < 0.3) { audioEnergy.snareEnergy = 1.0; snareHit = true; }
+                      else { audioEnergy.snareEnergy *= 0.92; }
+
+
+                      audioData.currentTime = audioAnalyzer.getCurrentTime();
+                      audioData.duration = audioAnalyzer.duration;
+                      audioData.bass = bass;
+                      audioData.mids = mids;
+                      audioData.highs = highs;
+                      audioData.melody = melody;
+                      audioData.sizzle = sizzle;
+                      audioData.bassHit = bassHit;
+                      audioData.snareHit = snareHit;
+                      audioData.bassEnergy = audioEnergy.bassEnergy;
+                      audioData.snareEnergy = audioEnergy.snareEnergy;
+                  }
+
+                  demoCanvas.width = window.innerWidth;
+                  demoCanvas.height = window.innerHeight;
+                  renderDemo(demoCtx, demoCanvas.width, demoCanvas.height, audioData);
+                  webglProcessor.render(audioData);
+              }
+              requestAnimationFrame(animationLoop);
+          };
+
+          const resizeCanvases = () => {
+              const w = window.innerWidth;
+              const h = window.innerHeight;
+              uiCanvas.width = w;
+              uiCanvas.height = h;
+              glCanvas.width = w;
+              glCanvas.height = h;
+          };
+
+          window.addEventListener('resize', resizeCanvases);
+
+          resizeCanvases();
+          uiScreen.start();
+          uiScreen.attachClickHandler(handleStart);
+          audioAnalyzer.setup(updateUiStatus);
+          animationLoop();
+      }
+
+
+      main();
+
+    </script>
+  </body>
+</html>
