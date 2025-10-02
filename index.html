@@ -811,24 +811,39 @@
           scribbleText(ctx, timeStr, w / 2, timeY, timeSize, 3, rgbaToString(palette.primary));
 
           // Contract Address Section
-          const caY = h * 0.55;
-          const caLabelSize = 24;
-          const caAddressSize = 20;
+          const caY = h * 0.56;
+          const caLabelSize = 32;
+          const caAddressSize = 28;
 
-          // CA Label
-          scribbleText(ctx, "CA:", w / 2, caY - 25, caLabelSize, 2, rgbaToString(palette.accent1));
+          // CA Label with glow effect
+          scribbleText(ctx, "CA:", w / 2, caY - 40, caLabelSize, 2 + pulse, rgbaToString(palette.accent1));
 
           // CA Address with box
-          const caBoxWidth = w * 0.7;
-          const caBoxHeight = 50;
+          const caBoxWidth = Math.min(w * 0.8, 1000);
+          const caBoxHeight = 60;
           const caBoxX = (w - caBoxWidth) / 2;
-          const caBoxY = caY - 15;
+          const caBoxY = caY - 20;
 
-          // Draw CA container box
-          scribbleRect(ctx, caBoxX, caBoxY, caBoxWidth, caBoxHeight, 3 + pulse * 2, rgbaToString(palette.primary), 2);
+          // Draw CA container box with filled background
+          tempColor.r = palette.accent1.r; tempColor.g = palette.accent1.g; tempColor.b = palette.accent1.b;
+          tempColor.a = 0.1;
+          scribbleFillRect(ctx, caBoxX, caBoxY, caBoxWidth, caBoxHeight, 2, rgbaToString(tempColor), 0.5);
 
-          // Contract Address text
-          scribbleText(ctx, CONTRACT_ADDRESS, w / 2, caY + 10, caAddressSize, 1.5, rgbaToString(palette.accent2));
+          scribbleRect(ctx, caBoxX, caBoxY, caBoxWidth, caBoxHeight, 4 + pulse * 3, rgbaToString(palette.primary), 3);
+
+          // Contract Address text with multiple layers for visibility
+          tempColor.r = palette.accent2.r; tempColor.g = palette.accent2.g; tempColor.b = palette.accent2.b;
+          tempColor.a = 0.4;
+          scribbleText(ctx, CONTRACT_ADDRESS, w / 2 + 1, caY + 12, caAddressSize, 2, rgbaToString(tempColor));
+
+          scribbleText(ctx, CONTRACT_ADDRESS, w / 2, caY + 10, caAddressSize, 2, rgbaToString(palette.primary));
+
+          // Corner stars on CA box
+          const caCornerSize = 8 + pulse * 4;
+          scribbleStar(ctx, caBoxX - 10, caBoxY - 10, caCornerSize, 4, rgbaToString(palette.accent1));
+          scribbleStar(ctx, caBoxX + caBoxWidth + 10, caBoxY - 10, caCornerSize, 4, rgbaToString(palette.accent1));
+          scribbleStar(ctx, caBoxX - 10, caBoxY + caBoxHeight + 10, caCornerSize, 4, rgbaToString(palette.accent2));
+          scribbleStar(ctx, caBoxX + caBoxWidth + 10, caBoxY + caBoxHeight + 10, caCornerSize, 4, rgbaToString(palette.accent2));
 
           // Loading bar (moved down)
           const barWidth = w * 0.6;
