@@ -1212,8 +1212,16 @@
               }
           };
 
+          let timeTracking = { startTime: null, pausedTime: 0 };
+
           const animationLoop = () => {
+              // Update audio analysis only when demo is running
               if (demoState === 'running') {
+                  // Track time for countdown
+                  if (!timeTracking.startTime) {
+                      timeTracking.startTime = performance.now();
+                  }
+
                   const frequencyData = audioAnalyzer.getAnalysisData(audioData.frequencyData);
                   if (frequencyData) {
                       const bass = (frequencyData[1] + frequencyData[2]) / 510;
@@ -1231,7 +1239,6 @@
                       if (snare > 0.55 && audioEnergy.snareEnergy < 0.3) { audioEnergy.snareEnergy = 1.0; snareHit = true; }
                       else { audioEnergy.snareEnergy *= 0.92; }
 
-
                       audioData.currentTime = audioAnalyzer.getCurrentTime();
                       audioData.duration = audioAnalyzer.duration;
                       audioData.bass = bass;
@@ -1248,6 +1255,22 @@
                   demoCanvas.width = window.innerWidth;
                   demoCanvas.height = window.innerHeight;
                   renderDemo(demoCtx, demoCanvas.width, demoCanvas.height, audioData);
+                  webglProcessor.render(audioData);
+              } else if (demoState === 'ended') {
+                  // Continue rendering countdown even after demo ends
+                  // Use elapsed time since start for countdown animation
+                  if (timeTracking.startTime) {
+                      audioData.currentTime = (performance.now() - timeTracking.startTime) / 1000 + 126; // Start countdown at 126s
+                  }
+
+                  demoCanvas.width = window.innerWidth;
+                  demoCanvas.height = window.innerHeight;
+
+                  const currentPalette = updateCurrentPalette(audioData.currentTime, currentPaletteState);
+                  demoCtx.fillStyle = rgbaToString({ ...currentPalette.bg, a: 0.2 });
+                  demoCtx.fillRect(0, 0, demoCanvas.width, demoCanvas.height);
+
+                  renderCountdownScreen(demoCtx, demoCanvas.width, demoCanvas.height, audioData.currentTime, currentPalette);
                   webglProcessor.render(audioData);
               }
               requestAnimationFrame(animationLoop);
