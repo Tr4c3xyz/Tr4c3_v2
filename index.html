@@ -60,8 +60,8 @@
       const TWO_PI = Math.PI * 2;
 
       // Universal countdown timer - Set your start time here (in UTC)
-      // Example: new Date('2025-10-02T08:00:00Z') for Oct 2, 2025 at 8:00 AM UTC
-      const COUNTDOWN_START_TIME = new Date('2025-10-02T08:00:00Z').getTime();
+      // Timer starts NOW and runs for 4 hours
+      const COUNTDOWN_START_TIME = Date.now();
       const COUNTDOWN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
 
 
