@@ -59,6 +59,11 @@
       const FFT_SIZE = 256;
       const TWO_PI = Math.PI * 2;
 
+      // Universal countdown timer - Set your start time here (in UTC)
+      // Example: new Date('2025-10-02T08:00:00Z') for Oct 2, 2025 at 8:00 AM UTC
+      const COUNTDOWN_START_TIME = new Date('2025-10-02T08:00:00Z').getTime();
+      const COUNTDOWN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
+
 
       function scribbleLine(ctx, x1, y1, x2, y2, roughness, strokeStyle, lineWidth = 1) {
           ctx.beginPath();
@@ -754,6 +759,112 @@
       let kaleidoToPlasmaParticles = [];
       function renderKaleidoToPlasmaTransition(ctx,w,h,t,audioData){const progress=(t-58)/2,easedProgress=progress<0.5?2*progress*progress:1-Math.pow(-2*progress+2,2)/2;kaleidoToPlasmaParticles.forEach(p=>{const x=p.sx+(p.ex-p.sx)*easedProgress,y=p.sy+(p.ey-p.sy)*easedProgress,size=p.startSize+(p.endSize-p.startSize)*easedProgress,roughness=5+(1-easedProgress)*5;lerpColor(p.startColor,p.endColor,easedProgress,tempColor);scribbleCircle(ctx,x,y,size,roughness,rgbaToString(tempColor),1+audioData.bass)})}
 
+      // Countdown Timer Rendering
+      function getTimeRemaining() {
+          const now = Date.now();
+          const elapsed = now - COUNTDOWN_START_TIME;
+          const remaining = COUNTDOWN_DURATION_MS - elapsed;
+
+          if (remaining <= 0) {
+              return { total: 0, hours: 0, minutes: 0, seconds: 0, progress: 1 };
+          }
+
+          const total = remaining;
+          const hours = Math.floor(remaining / (1000 * 60 * 60));
+          const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+          const progress = elapsed / COUNTDOWN_DURATION_MS;
+
+          return { total, hours, minutes, seconds, progress: Math.min(1, progress) };
+      }
+
+      function renderCountdownScreen(ctx, w, h, t, palette) {
+          const timeData = getTimeRemaining();
+          const pulse = (Math.sin(t * 3) + 1) / 2;
+
+          // Background particles
+          renderBackgroundNoise(ctx, w, h, palette);
+
+          // Title
+          const titleY = h * 0.25;
+          const titleSize = Math.min(w * 0.08, 100);
+          scribbleText(ctx, "TR4C3 UNLOCKING", w / 2, titleY, titleSize, 3 + pulse * 2, rgbaToString(palette.primary));
+
+          // Time display
+          const timeY = h * 0.45;
+          const timeSize = Math.min(w * 0.12, 140);
+          const timeStr = `${String(timeData.hours).padStart(2, '0')}:${String(timeData.minutes).padStart(2, '0')}:${String(timeData.seconds).padStart(2, '0')}`;
+
+          // Glitchy time effect
+          const glitchOffset = pulse > 0.8 ? (Math.random() - 0.5) * 5 : 0;
+          tempColor.r = palette.accent1.r; tempColor.g = palette.accent1.g; tempColor.b = palette.accent1.b;
+          tempColor.a = 0.6;
+          scribbleText(ctx, timeStr, w / 2 + glitchOffset, timeY, timeSize, 2, rgbaToString(tempColor));
+
+          tempColor.r = palette.accent2.r; tempColor.g = palette.accent2.g; tempColor.b = palette.accent2.b;
+          tempColor.a = 0.6;
+          scribbleText(ctx, timeStr, w / 2 - glitchOffset, timeY, timeSize, 2, rgbaToString(tempColor));
+
+          scribbleText(ctx, timeStr, w / 2, timeY, timeSize, 3, rgbaToString(palette.primary));
+
+          // Loading bar
+          const barWidth = w * 0.6;
+          const barHeight = 40;
+          const barX = (w - barWidth) / 2;
+          const barY = h * 0.65;
+
+          // Bar container
+          const containerRoughness = 4 + pulse * 3;
+          scribbleRect(ctx, barX, barY, barWidth, barHeight, containerRoughness, rgbaToString(palette.primary), 3);
+
+          // Progress fill
+          const fillWidth = barWidth * timeData.progress;
+          if (fillWidth > 0) {
+              const fillRoughness = 2 + pulse * 2;
+              tempColor.r = palette.accent1.r; tempColor.g = palette.accent1.g; tempColor.b = palette.accent1.b;
+              tempColor.a = 0.3;
+              scribbleFillRect(ctx, barX, barY, fillWidth, barHeight, fillRoughness, rgbaToString(tempColor), 1);
+
+              // Progress bar edge
+              const edgeColor = lerpColor(palette.accent1, palette.accent2, pulse, tempColor);
+              scribbleLine(ctx, barX + fillWidth, barY, barX + fillWidth, barY + barHeight, 3, rgbaToString(edgeColor), 3);
+
+              // Particles at progress edge
+              for (let i = 0; i < 3; i++) {
+                  const px = barX + fillWidth + (Math.random() - 0.5) * 20;
+                  const py = barY + Math.random() * barHeight;
+                  const size = 2 + pulse * 5;
+                  scribbleStar(ctx, px, py, size, 4, rgbaToString(palette.accent2));
+              }
+          }
+
+          // Percentage text
+          const percentY = barY + barHeight + 50;
+          const percentText = `${Math.floor(timeData.progress * 100)}%`;
+          scribbleText(ctx, percentText, w / 2, percentY, 36, 2, rgbaToString(palette.accent1));
+
+          // Animated corner decorations
+          const cornerSize = 40;
+          const corners = [
+              { x: barX - 20, y: barY - 20 },
+              { x: barX + barWidth + 20, y: barY - 20 },
+              { x: barX - 20, y: barY + barHeight + 20 },
+              { x: barX + barWidth + 20, y: barY + barHeight + 20 }
+          ];
+
+          corners.forEach((corner, i) => {
+              const rotation = t + i * Math.PI / 2;
+              const size = cornerSize * (0.8 + pulse * 0.2);
+              scribbleCircle(ctx, corner.x, corner.y, size * 0.3, 3, rgbaToString(palette.accent2), 2);
+          });
+
+          // Status message
+          if (timeData.total <= 0) {
+              const msgY = h * 0.85;
+              scribbleText(ctx, "UNLOCKED", w / 2, msgY, 48, 4, rgbaToString(palette.primary));
+          }
+      }
+
       const MAIN_SCROLLER_SECTIONS = [
           { type: 'separator' },
           { type: 'greeting', text: "TR4C3 LOADING... TRACE CONNECTING... TRACE LIVE." },
@@ -993,6 +1104,11 @@
       const setupKaleidoTransition = (w,h) => { setupKaleidoToPlasmaTransition(w, h, kaleidoToPlasmaParticles); };
       const resetKaleidoTransition = () => { kaleidoToPlasmaParticles = []; };
 
+      // Countdown wrapper function
+      const renderCountdownWrapper = (ctx, w, h, audio, palette) => {
+          renderCountdownScreen(ctx, w, h, audio.currentTime, palette);
+      };
+
       const sceneTimeline = [
           { start: 0, end: 7.5, renderers: [(ctx, w, h, audio, palette) => renderIntro(ctx, w, h, audio.currentTime, audio.bass, palette)] },
           { start: 7.5, end: 14.5, renderers: [renderMovingStarfield] },
@@ -1008,7 +1124,7 @@
           { start: 100, end: 112, renderers: [renderStaticStarfield, renderGeometricPatternWrapper] },
           { start: 112, end: 124, renderers: [renderSquareTunnelWrapper, spawnEndBassParticles, renderParticlesWrapper] },
           { start: 124, end: 126, renderers: [renderSquareTunnelCollapseTransitionWrapper, spawnEndBassParticles, renderParticlesWrapper] },
-          { start: 126, end: Infinity, renderers: [renderFadingStarfieldWrapper, renderOutroScroller] }
+          { start: 126, end: Infinity, renderers: [renderCountdownWrapper] }
       ];
 
       function renderDemo(ctx, width, height, audioData) {
