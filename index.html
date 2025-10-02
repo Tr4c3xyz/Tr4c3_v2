@@ -1189,13 +1189,13 @@
           const updateUiStatus = (status, message = '') => uiScreen.setState(status, message);
 
           const handleDemoEnd = () => {
-              setTimeout(() => {
-                  if (document.fullscreenElement) document.exitFullscreen().catch(err => console.error(err));
-                  demoState = 'ended';
-                  uiCanvas.style.display = 'block';
-                  document.body.style.cursor = 'auto';
-                  uiScreen.setState('ended');
-              }, 2500);
+              // Don't stop anything - just transition to countdown
+              demoState = 'countdown';
+              document.body.style.cursor = 'auto';
+              // Exit fullscreen if active
+              if (document.fullscreenElement) {
+                  document.exitFullscreen().catch(err => console.error(err));
+              }
           };
 
           const handleStart = async () => {
@@ -1212,11 +1212,19 @@
               }
           };
 
+          // Handle ESC key to exit fullscreen but keep audio playing
+          document.addEventListener('fullscreenchange', () => {
+              if (!document.fullscreenElement && demoState === 'running') {
+                  // Exited fullscreen but keep everything running
+                  document.body.style.cursor = 'auto';
+              }
+          });
+
           let timeTracking = { startTime: null, pausedTime: 0 };
 
           const animationLoop = () => {
-              // Update audio analysis only when demo is running
-              if (demoState === 'running') {
+              // Continue audio analysis for both running and countdown states
+              if (demoState === 'running' || demoState === 'countdown') {
                   // Track time for countdown
                   if (!timeTracking.startTime) {
                       timeTracking.startTime = performance.now();
@@ -1254,24 +1262,20 @@
 
                   demoCanvas.width = window.innerWidth;
                   demoCanvas.height = window.innerHeight;
-                  renderDemo(demoCtx, demoCanvas.width, demoCanvas.height, audioData);
-                  webglProcessor.render(audioData);
-              } else if (demoState === 'ended') {
-                  // Continue rendering countdown even after demo ends
-                  // Use elapsed time since start for countdown animation
-                  if (timeTracking.startTime) {
-                      audioData.currentTime = (performance.now() - timeTracking.startTime) / 1000 + 126; // Start countdown at 126s
+
+                  if (demoState === 'running') {
+                      // Render normal demo
+                      renderDemo(demoCtx, demoCanvas.width, demoCanvas.height, audioData);
+                      webglProcessor.render(audioData);
+                  } else if (demoState === 'countdown') {
+                      // Render countdown with audio still playing
+                      const currentPalette = updateCurrentPalette(audioData.currentTime, currentPaletteState);
+                      demoCtx.fillStyle = rgbaToString({ ...currentPalette.bg, a: 0.2 });
+                      demoCtx.fillRect(0, 0, demoCanvas.width, demoCanvas.height);
+
+                      renderCountdownScreen(demoCtx, demoCanvas.width, demoCanvas.height, audioData.currentTime, currentPalette);
+                      webglProcessor.render(audioData);
                   }
-
-                  demoCanvas.width = window.innerWidth;
-                  demoCanvas.height = window.innerHeight;
-
-                  const currentPalette = updateCurrentPalette(audioData.currentTime, currentPaletteState);
-                  demoCtx.fillStyle = rgbaToString({ ...currentPalette.bg, a: 0.2 });
-                  demoCtx.fillRect(0, 0, demoCanvas.width, demoCanvas.height);
-
-                  renderCountdownScreen(demoCtx, demoCanvas.width, demoCanvas.height, audioData.currentTime, currentPalette);
-                  webglProcessor.render(audioData);
               }
               requestAnimationFrame(animationLoop);
           };
