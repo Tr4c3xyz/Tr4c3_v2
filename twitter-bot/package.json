@@ -2,12 +2,14 @@
   "name": "tr4c3-twitter-bot",
   "version": "1.0.0",
   "description": "Automated cryptic tweet generator for TR4C3",
-  "main": "bot.js",
+  "main": "worker.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "start": "node bot.js"
   },
-  "keywords": ["twitter", "bot", "openai", "automation"],
+  "keywords": ["twitter", "bot", "openai", "automation", "cloudflare-workers"],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -16,6 +18,7 @@
     "dotenv": "^16.3.1"
   },
   "devDependencies": {
+    "wrangler": "^3.22.0",
     "nodemon": "^3.0.1"
   }
 }

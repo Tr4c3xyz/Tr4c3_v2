@@ -1,0 +1,23 @@
+name = "tr4c3-twitter-bot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Cron Triggers - Runs every 5-10 minutes (randomly)
+# Using multiple cron schedules to create randomness
+[triggers]
+crons = [
+  "*/5 * * * *",  # Every 5 minutes
+  "*/7 * * * *",  # Every 7 minutes
+  "*/9 * * * *"   # Every 9 minutes
+]
+
+# Secrets (add via CLI or Cloudflare Dashboard)
+# Don't put actual values here - use: wrangler secret put <NAME>
+# Or add via Cloudflare Dashboard: Workers > tr4c3-twitter-bot > Settings > Variables
+
+# Required secrets:
+# - OPENAI_API_KEY
+# - TWITTER_API_KEY
+# - TWITTER_API_SECRET
+# - TWITTER_ACCESS_TOKEN
+# - TWITTER_ACCESS_SECRET
