@@ -64,6 +64,9 @@
       const COUNTDOWN_START_TIME = Date.now();
       const COUNTDOWN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
 
+      // Contract Address - Set your CA here
+      const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000";
+
 
       function scribbleLine(ctx, x1, y1, x2, y2, roughness, strokeStyle, lineWidth = 1) {
           ctx.beginPath();
@@ -807,11 +810,31 @@
 
           scribbleText(ctx, timeStr, w / 2, timeY, timeSize, 3, rgbaToString(palette.primary));
 
-          // Loading bar
+          // Contract Address Section
+          const caY = h * 0.55;
+          const caLabelSize = 24;
+          const caAddressSize = 20;
+
+          // CA Label
+          scribbleText(ctx, "CA:", w / 2, caY - 25, caLabelSize, 2, rgbaToString(palette.accent1));
+
+          // CA Address with box
+          const caBoxWidth = w * 0.7;
+          const caBoxHeight = 50;
+          const caBoxX = (w - caBoxWidth) / 2;
+          const caBoxY = caY - 15;
+
+          // Draw CA container box
+          scribbleRect(ctx, caBoxX, caBoxY, caBoxWidth, caBoxHeight, 3 + pulse * 2, rgbaToString(palette.primary), 2);
+
+          // Contract Address text
+          scribbleText(ctx, CONTRACT_ADDRESS, w / 2, caY + 10, caAddressSize, 1.5, rgbaToString(palette.accent2));
+
+          // Loading bar (moved down)
           const barWidth = w * 0.6;
           const barHeight = 40;
           const barX = (w - barWidth) / 2;
-          const barY = h * 0.65;
+          const barY = h * 0.72;
 
           // Bar container
           const containerRoughness = 4 + pulse * 3;
