@@ -2,13 +2,10 @@ name = "tr4c3-twitter-bot"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-# Cron Triggers - Runs every 5-10 minutes (randomly)
-# Using multiple cron schedules to create randomness
+# Cron Trigger - Runs every 10 minutes
 [triggers]
 crons = [
-  "*/5 * * * *",  # Every 5 minutes
-  "*/7 * * * *",  # Every 7 minutes
-  "*/9 * * * *"   # Every 9 minutes
+  "*/10 * * * *"  # Every 10 minutes
 ]
 
 # Secrets (add via CLI or Cloudflare Dashboard)
