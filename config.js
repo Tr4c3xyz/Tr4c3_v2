@@ -5,7 +5,7 @@ const TR4C3_CONFIG = {
   // Contract Address
   // Change "COMING SOON" to your actual CA when ready
   // Example: "0x1234567890abcdef1234567890abcdef12345678"
-  contractAddress: "COMING SOON",
+  contractAddress: "HvbKzBxUjXVLVtdDd7dScFetY3hM1mWhTTrTENTipump",
 
   // Countdown Timer Settings
   // When the countdown started (leave as Date.now() to start from page load)
