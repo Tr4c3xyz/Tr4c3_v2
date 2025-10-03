@@ -6,6 +6,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&display=swap" rel="stylesheet">
+    <script src="config.js"></script>
     <style>
       body, html, #root {
         margin: 0;
@@ -59,13 +60,10 @@
       const FFT_SIZE = 256;
       const TWO_PI = Math.PI * 2;
 
-      // Universal countdown timer - Set your start time here (in UTC)
-      // Timer starts NOW and runs for 4 hours
-      const COUNTDOWN_START_TIME = Date.now();
-      const COUNTDOWN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
-
-      // Contract Address - Set your CA here
-      const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000";
+      // Load configuration from config.js
+      const COUNTDOWN_START_TIME = TR4C3_CONFIG.countdownStartTime;
+      const COUNTDOWN_DURATION_MS = TR4C3_CONFIG.countdownDuration;
+      const CONTRACT_ADDRESS = TR4C3_CONFIG.contractAddress;
 
 
       function scribbleLine(ctx, x1, y1, x2, y2, roughness, strokeStyle, lineWidth = 1) {
@@ -320,7 +318,7 @@
 
               // Create gain node for volume control
               this.gainNode = this.audioContext.createGain();
-              this.gainNode.gain.value = 0.3; // Set volume to 30%
+              this.gainNode.gain.value = TR4C3_CONFIG.audioVolume;
 
               this.sourceNode = this.audioContext.createBufferSource();
               this.sourceNode.buffer = this.audioBuffer;
