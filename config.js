@@ -9,7 +9,7 @@ const TR4C3_CONFIG = {
 
   // Countdown Timer Settings
   // When the countdown started (leave as Date.now() to start from page load)
-  countdownStartTime: countdownStartTime: new Date('2025-10-03T08:30:00Z').getTime(),
+  countdownStartTime: new Date('2025-10-03T09:00:00Z').getTime(),
 
   // How long the countdown runs (in milliseconds)
   // 4 hours = 4 * 60 * 60 * 1000
